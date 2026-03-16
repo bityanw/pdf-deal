@@ -102,8 +102,7 @@ export function usePDFProcessor() {
       const a4Width = 595.28;
       const a4Height = 841.89;
       
-      // 边距
-      const margin = 20;
+      // 边距（保留变量定义以便将来使用）
       
       // 收集所有PDF页面
       const allPages: PDFEmbeddedPage[] = [];
