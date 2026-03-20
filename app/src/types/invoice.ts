@@ -59,3 +59,13 @@ export interface ParseResult {
   excelUrl?: string;
   excelFileName?: string;
 }
+
+// 费用明细表行数据
+export interface ExpenseDetailRow {
+  date: string;           // 日期
+  projectName: string;    // 项目名称（留空）
+  category: string;       // 类别（留空）
+  amount: number;         // 金额
+  other: string;          // 其他（发票号+发票类型）
+  subtotal: number;       // 小计
+}

@@ -1,4 +1,5 @@
 import type { InvoiceData, ExcelRowData } from '@/types/pdf';
+import type { ExpenseDetailRow } from '@/types/invoice';
 
 // 行程单类型（包含发票类型）
 type ItineraryType = 'taxi' | 'train' | 'flight' | 'hotel' | 'other' | 'invoice_transport' | 'invoice_hotel' | 'invoice_other';
@@ -907,6 +908,117 @@ export function generateExcel(rows: ExcelRowData[]): Blob {
     type: 'array',
     bookSST: false,
   });
-  
+
+  return new Blob([excelBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+}
+
+// 将发票数据转换为费用明细表行数据
+export function convertToExpenseDetailRows(invoices: InvoiceData[]): ExpenseDetailRow[] {
+  return invoices.filter(inv => inv.isValid).map(invoice => ({
+    date: invoice.invoiceDate || invoice.departureDate || '',
+    projectName: '',  // 留空
+    category: '',     // 留空
+    amount: invoice.amountWithTax || invoice.totalAmount || 0,
+    other: `${invoice.invoiceNumber || ''} ${invoice.invoiceType || ''}`.trim(),
+    subtotal: invoice.amountWithTax || invoice.totalAmount || 0
+  }));
+}
+
+// 生成费用明细表Excel
+export function generateExpenseDetailExcel(rows: ExpenseDetailRow[]): Blob {
+  const XLSX = window.XLSX;
+  const wb = XLSX.utils.book_new();
+
+  // 准备数据
+  const data: (string | number)[][] = [
+    ['业务费用明细表', '', '', '', '', ''],
+    ['报销人：', '', '编号：', '', '', ''],
+    ['日期', '项目名称', '类别', '金额', '其他', '小计'],
+  ];
+
+  // 数据行
+  rows.forEach(row => {
+    data.push([
+      row.date,
+      row.projectName,
+      row.category,
+      row.amount || '',
+      row.other,
+      row.subtotal || ''
+    ]);
+  });
+
+  // 合计行
+  const totalAmount = rows.reduce((sum, r) => sum + r.amount, 0);
+  const totalSubtotal = rows.reduce((sum, r) => sum + r.subtotal, 0);
+  data.push(['', '合计', '', totalAmount, '', totalSubtotal]);
+
+  // 创建工作表
+  const ws = XLSX.utils.aoa_to_sheet(data);
+
+  // 设置列宽
+  ws['!cols'] = [
+    { wch: 12 },  // 日期
+    { wch: 20 },  // 项目名称
+    { wch: 15 },  // 类别
+    { wch: 12 },  // 金额
+    { wch: 35 },  // 其他
+    { wch: 12 }   // 小计
+  ];
+
+  // 合并单元格
+  ws['!merges'] = [
+    { s: { r: 0, c: 0 }, e: { r: 0, c: 5 } },  // 标题行
+  ];
+
+  // 添加边框样式
+  const range = XLSX.utils.decode_range(ws['!ref'] || 'A1:F1');
+  for (let R = range.s.r; R <= range.e.r; ++R) {
+    for (let C = range.s.c; C <= range.e.c; ++C) {
+      const cellAddress = XLSX.utils.encode_cell({ r: R, c: C });
+      if (!ws[cellAddress]) {
+        ws[cellAddress] = { v: '' };
+      }
+
+      ws[cellAddress].s = {
+        border: {
+          top: { style: 'thin', color: { rgb: '000000' } },
+          bottom: { style: 'thin', color: { rgb: '000000' } },
+          left: { style: 'thin', color: { rgb: '000000' } },
+          right: { style: 'thin', color: { rgb: '000000' } },
+        },
+        alignment: {
+          horizontal: 'center',
+          vertical: 'center',
+          wrapText: true,
+        },
+      };
+
+      // 标题行样式
+      if (R === 0) {
+        ws[cellAddress].s.font = { bold: true, sz: 14 };
+        ws[cellAddress].s.fill = { fgColor: { rgb: 'E7E6E6' } };
+      }
+      // 表头样式
+      else if (R === 2) {
+        ws[cellAddress].s.font = { bold: true };
+        ws[cellAddress].s.fill = { fgColor: { rgb: 'F2F2F2' } };
+      }
+      // 合计行样式
+      else if (R === data.length - 1) {
+        ws[cellAddress].s.font = { bold: true };
+        ws[cellAddress].s.fill = { fgColor: { rgb: 'FFF2CC' } };
+      }
+    }
+  }
+
+  XLSX.utils.book_append_sheet(wb, ws, '业务费用明细表');
+
+  const excelBuffer = XLSX.write(wb, {
+    bookType: 'xlsx',
+    type: 'array',
+    bookSST: false,
+  });
+
   return new Blob([excelBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
 }

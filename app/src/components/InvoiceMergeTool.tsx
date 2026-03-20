@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react';
-import { FileText, Download, RotateCcw, Check, AlertCircle } from 'lucide-react';
+import { FileText, Download, RotateCcw, Check, AlertCircle, Eye, FileSpreadsheet } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
@@ -8,6 +8,9 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { FileUpload } from './FileUpload';
 import { usePDFProcessor } from '@/hooks/usePDFProcessor';
 import type { ProcessingOptions, ProcessingResult } from '@/types/pdf';
+import type { InvoiceData, ExpenseDetailRow } from '@/types/invoice';
+import { parseItineraryPDF } from '@/utils/invoiceParser';
+import { convertToExpenseDetailRows, generateExpenseDetailExcel } from '@/utils/invoiceParser';
 
 export function InvoiceMergeTool() {
   const {
@@ -26,11 +29,31 @@ export function InvoiceMergeTool() {
   });
 
   const [result, setResult] = useState<ProcessingResult | null>(null);
+  const [expenseDetailRows, setExpenseDetailRows] = useState<ExpenseDetailRow[]>([]);
+  const [showExpensePreview, setShowExpensePreview] = useState(false);
 
   const handleConvert = useCallback(async () => {
+    // 先解析发票数据
+    const parsedInvoices: InvoiceData[] = [];
+    for (const file of files) {
+      try {
+        const parseResult = await parseItineraryPDF(file.file);
+        if (parseResult.success) {
+          parsedInvoices.push(parseResult.data);
+        }
+      } catch (error) {
+        console.error(`解析发票失败: ${file.name}`, error);
+      }
+    }
+
+    // 生成费用明细表数据
+    const expenseRows = convertToExpenseDetailRows(parsedInvoices);
+    setExpenseDetailRows(expenseRows);
+
+    // 执行PDF合并
     const result = await mergeInvoices(options);
     setResult(result);
-  }, [mergeInvoices, options]);
+  }, [mergeInvoices, options, files]);
 
   const handleDownload = useCallback(() => {
     if (result?.downloadUrl && result?.fileName) {
@@ -46,7 +69,23 @@ export function InvoiceMergeTool() {
   const handleReset = useCallback(() => {
     clearFiles();
     setResult(null);
+    setExpenseDetailRows([]);
+    setShowExpensePreview(false);
   }, [clearFiles]);
+
+  const handleExportExpenseDetail = useCallback(() => {
+    if (expenseDetailRows.length === 0) return;
+
+    const blob = generateExpenseDetailExcel(expenseDetailRows);
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `业务费用明细表_${new Date().toISOString().slice(0, 10)}.xlsx`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  }, [expenseDetailRows]);
 
   return (
     <div className="w-full max-w-4xl mx-auto space-y-6">
@@ -197,13 +236,80 @@ export function InvoiceMergeTool() {
               </Alert>
               
               {result.success && result.downloadUrl && (
-                <Button
-                  onClick={handleDownload}
-                  className="w-full bg-green-500 hover:bg-green-600 text-white"
-                >
-                  <Download className="w-4 h-4 mr-2" />
-                  下载结果文件
-                </Button>
+                <>
+                  <Button
+                    onClick={handleDownload}
+                    className="w-full bg-green-500 hover:bg-green-600 text-white"
+                  >
+                    <Download className="w-4 h-4 mr-2" />
+                    下载合并PDF
+                  </Button>
+
+                  {expenseDetailRows.length > 0 && (
+                    <div className="space-y-3 mt-4">
+                      <div className="flex gap-3">
+                        <Button
+                          onClick={() => setShowExpensePreview(!showExpensePreview)}
+                          variant="outline"
+                          className="flex-1"
+                        >
+                          <Eye className="w-4 h-4 mr-2" />
+                          {showExpensePreview ? '隐藏' : '预览'}费用明细表
+                        </Button>
+                        <Button
+                          onClick={handleExportExpenseDetail}
+                          className="flex-1 bg-blue-500 hover:bg-blue-600 text-white"
+                        >
+                          <FileSpreadsheet className="w-4 h-4 mr-2" />
+                          导出费用明细表
+                        </Button>
+                      </div>
+
+                      {showExpensePreview && (
+                        <div className="border rounded-lg overflow-hidden">
+                          <div className="overflow-x-auto">
+                            <table className="w-full text-sm">
+                              <thead className="bg-gray-100">
+                                <tr>
+                                  <th className="px-4 py-2 text-left border">日期</th>
+                                  <th className="px-4 py-2 text-left border">项目名称</th>
+                                  <th className="px-4 py-2 text-left border">类别</th>
+                                  <th className="px-4 py-2 text-right border">金额</th>
+                                  <th className="px-4 py-2 text-left border">其他</th>
+                                  <th className="px-4 py-2 text-right border">小计</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {expenseDetailRows.map((row, index) => (
+                                  <tr key={index} className="hover:bg-gray-50">
+                                    <td className="px-4 py-2 border">{row.date}</td>
+                                    <td className="px-4 py-2 border">{row.projectName}</td>
+                                    <td className="px-4 py-2 border">{row.category}</td>
+                                    <td className="px-4 py-2 text-right border">{row.amount.toFixed(2)}</td>
+                                    <td className="px-4 py-2 border text-xs">{row.other}</td>
+                                    <td className="px-4 py-2 text-right border">{row.subtotal.toFixed(2)}</td>
+                                  </tr>
+                                ))}
+                                <tr className="bg-yellow-50 font-bold">
+                                  <td className="px-4 py-2 border"></td>
+                                  <td className="px-4 py-2 border">合计</td>
+                                  <td className="px-4 py-2 border"></td>
+                                  <td className="px-4 py-2 text-right border">
+                                    {expenseDetailRows.reduce((sum, r) => sum + r.amount, 0).toFixed(2)}
+                                  </td>
+                                  <td className="px-4 py-2 border"></td>
+                                  <td className="px-4 py-2 text-right border">
+                                    {expenseDetailRows.reduce((sum, r) => sum + r.subtotal, 0).toFixed(2)}
+                                  </td>
+                                </tr>
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </>
               )}
             </div>
           ) : (
