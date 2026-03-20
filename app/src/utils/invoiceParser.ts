@@ -53,11 +53,45 @@ export async function parseItineraryPDF(file: File): Promise<ParseResult> {
       console.log(pdfTypeInfo.logs.join('\n'));
     }
     
-    // 如果是发票文件，标记为发票类型并返回成功（但不纳入Excel统计）
+    // 如果是发票文件，解析发票信息
     if (pdfTypeInfo.type === 'invoice') {
       invoiceData.invoiceType = pdfTypeInfo.subtype || 'invoice_other';
+
+      // 提取发票号码
+      const invoiceNumberMatch = fullText.match(/发票号码[：:]\s*(\d{8,20})/);
+      if (invoiceNumberMatch) {
+        invoiceData.invoiceNumber = invoiceNumberMatch[1];
+      }
+
+      // 提取发票代码
+      const invoiceCodeMatch = fullText.match(/发票代码[：:]\s*(\d{10,12})/);
+      if (invoiceCodeMatch) {
+        invoiceData.invoiceCode = invoiceCodeMatch[1];
+      }
+
+      // 提取开票日期
+      const dateMatch = fullText.match(/开票日期[：:]\s*(\d{4})年(\d{1,2})月(\d{1,2})日/);
+      if (dateMatch) {
+        invoiceData.invoiceDate = `${dateMatch[1]}-${dateMatch[2].padStart(2, '0')}-${dateMatch[3].padStart(2, '0')}`;
+      }
+
+      // 提取价税合计
+      const amountMatches = fullText.matchAll(/[¥￥]\s*(\d+\.?\d*)/g);
+      const amounts = Array.from(amountMatches).map(m => parseFloat(m[1]));
+      if (amounts.length > 0) {
+        // 通常最大的金额是价税合计
+        invoiceData.amountWithTax = Math.max(...amounts);
+      }
+
+      // 如果没找到带¥符号的，尝试查找"价税合计"后的数字
+      if (!invoiceData.amountWithTax) {
+        const totalMatch = fullText.match(/价税合计[：:\s]*[¥￥]?\s*(\d+\.?\d*)/);
+        if (totalMatch) {
+          invoiceData.amountWithTax = parseFloat(totalMatch[1]);
+        }
+      }
+
       invoiceData.isValid = true;
-      invoiceData.remarks = '发票文件，已跳过';
       return {
         success: true,
         data: invoiceData,

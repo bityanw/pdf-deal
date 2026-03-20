@@ -38,6 +38,7 @@ export function InvoiceMergeTool() {
     for (const file of files) {
       try {
         const parseResult = await parseItineraryPDF(file.file);
+        console.log(`解析文件 ${file.name}:`, parseResult);
         if (parseResult.success) {
           parsedInvoices.push(parseResult.data);
         }
@@ -46,8 +47,11 @@ export function InvoiceMergeTool() {
       }
     }
 
+    console.log('所有解析的发票:', parsedInvoices);
+
     // 生成费用明细表数据
     const expenseRows = convertToExpenseDetailRows(parsedInvoices);
+    console.log('费用明细表行数据:', expenseRows);
     setExpenseDetailRows(expenseRows);
 
     // 执行PDF合并
