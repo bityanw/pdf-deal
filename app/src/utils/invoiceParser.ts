@@ -504,38 +504,95 @@ function parseTrainTicket(text: string, data: InvoiceData): ParseResult {
 
     // 英文站名到中文的映射
     const stationNameMap: { [key: string]: string } = {
+      // 北京
       'Beijingnan': '北京南站',
       'Beijing': '北京站',
       'Beijingxi': '北京西站',
-      'Hangzhoudong': '杭州东站',
-      'Hangzhou': '杭州站',
+      'Beijingbei': '北京北站',
+      // 上海
       'Shanghainan': '上海南站',
       'Shanghai': '上海站',
       'Shanghaihongqiao': '上海虹桥站',
+      'Shanghaixi': '上海西站',
+      // 广州/深圳
       'Guangzhoudong': '广州东站',
       'Guangzhou': '广州站',
       'Guangzhounan': '广州南站',
+      'Guangzhoubei': '广州北站',
       'Shenzhenbei': '深圳北站',
       'Shenzhen': '深圳站',
-      'Tianjinnan': '天津南站',
-      'Tianjin': '天津站',
+      'Shenzhenxi': '深圳西站',
+      // 杭州
+      'Hangzhoudong': '杭州东站',
+      'Hangzhou': '杭州站',
+      'Hangzhounan': '杭州南站',
+      // 南京/苏州
       'Nanjingnan': '南京南站',
       'Nanjing': '南京站',
       'Suzhoubei': '苏州北站',
       'Suzhou': '苏州站',
+      'Suzhoudong': '苏州东站',
+      // 天津
+      'Tianjinnan': '天津南站',
+      'Tianjin': '天津站',
+      'Tianjinxi': '天津西站',
+      'Tianjinbei': '天津北站',
+      // 其他主要城市
       'Wuxi': '无锡站',
+      'Wuxidong': '无锡东站',
       'Changzhou': '常州站',
+      'Changzhoudong': '常州东站',
       'Zhengzhoudong': '郑州东站',
       'Zhengzhou': '郑州站',
       'Xian': '西安站',
       'Xianbei': '西安北站',
       'Chengdudong': '成都东站',
       'Chengdu': '成都站',
+      'Chengdunan': '成都南站',
       'Chongqingbei': '重庆北站',
       'Chongqing': '重庆站',
+      'Chongqingxi': '重庆西站',
       'Wuhan': '武汉站',
       'Changsha': '长沙站',
       'Changshanan': '长沙南站',
+      'Ningbo': '宁波站',
+      'Ningbodong': '宁波东站',
+      'Wenzhou': '温州站',
+      'Wenzhounan': '温州南站',
+      'Hefei': '合肥站',
+      'Hefeinan': '合肥南站',
+      'Nanchang': '南昌站',
+      'Nanchangxi': '南昌西站',
+      'Fuzhou': '福州站',
+      'Fuzhounan': '福州南站',
+      'Xiamen': '厦门站',
+      'Xiamenbei': '厦门北站',
+      'Qingdao': '青岛站',
+      'Qingdaobei': '青岛北站',
+      'Jinan': '济南站',
+      'Jinandong': '济南东站',
+      'Jinanxi': '济南西站',
+      'Taiyuan': '太原站',
+      'Taiyuannan': '太原南站',
+      'Shijiazhuang': '石家庄站',
+      'Shijiazhuangdong': '石家庄东站',
+      'Haerbin': '哈尔滨站',
+      'Haerbinxi': '哈尔滨西站',
+      'Changchun': '长春站',
+      'Changchunxi': '长春西站',
+      'Shenyang': '沈阳站',
+      'Shenyangbei': '沈阳北站',
+      'Dalian': '大连站',
+      'Dalianbei': '大连北站',
+      'Kunming': '昆明站',
+      'Kunmingnan': '昆明南站',
+      'Guiyang': '贵阳站',
+      'Guiyangbei': '贵阳北站',
+      'Lanzhou': '兰州站',
+      'Lanzhouxi': '兰州西站',
+      'Xining': '西宁站',
+      'Yinchuan': '银川站',
+      'Urumqi': '乌鲁木齐站',
     };
 
     // 如果找到英文站名，转换为中文
@@ -543,10 +600,15 @@ function parseTrainTicket(text: string, data: InvoiceData): ParseResult {
       const firstStation = englishStationMatches[0];
       const secondStation = englishStationMatches[englishStationMatches.length - 1];
 
-      data.departure = stationNameMap[firstStation] || firstStation;
-      data.destination = stationNameMap[secondStation] || secondStation;
+      // 只有在映射表中找到对应的中文站名时才使用
+      if (stationNameMap[firstStation]) {
+        data.departure = stationNameMap[firstStation];
+      }
+      if (stationNameMap[secondStation]) {
+        data.destination = stationNameMap[secondStation];
+      }
 
-      debugLogs.push(`[DEBUG] 从英文站名提取: ${data.departure} -> ${data.destination}`);
+      debugLogs.push(`[DEBUG] 从英文站名提取: ${data.departure || '未找到映射'} -> ${data.destination || '未找到映射'}`);
     }
     // 从文件名提取地点（优先使用）
     let fromFile = '';
