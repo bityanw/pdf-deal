@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>测试PDF解析</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+</head>
+<body>
+    <h1>测试PDF解析</h1>
+    <input type="file" id="fileInput" accept=".pdf">
+    <button onclick="parseFile()">解析</button>
+    <pre id="output"></pre>
+
+    <script>
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+        async function parseFile() {
+            const fileInput = document.getElementById('fileInput');
+            const output = document.getElementById('output');
+
+            if (!fileInput.files[0]) {
+                alert('请选择文件');
+                return;
+            }
+
+            const file = fileInput.files[0];
+            const arrayBuffer = await file.arrayBuffer();
+
+            try {
+                const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+
+                let fullText = '';
+                for (let i = 1; i <= pdf.numPages; i++) {
+                    const page = await pdf.getPage(i);
+                    const textContent = await page.getTextContent();
+                    const pageText = textContent.items.map(item => item.str).join('\n');
+                    fullText += pageText + '\n';
+                }
+
+                output.textContent = '=== 原始文本 ===\n' + fullText.substring(0, 2000) + '\n\n';
+
+                // 测试解析逻辑
+                output.textContent += '=== 解析测试 ===\n';
+
+                // 检测发票号码
+                const invoiceMatch = fullText.match(/发票号码[：:]\s*(\d+)/);
+                output.textContent += `发票号码: ${invoiceMatch ? invoiceMatch[1] : '未找到'}\n`;
+
+                // 检测日期
+                const dateMatch = fullText.match(/(\d{4})\s*年\s*(\d{1,2})\s*月\s*(\d{1,2})\s*日/);
+                output.textContent += `日期匹配: ${dateMatch ? dateMatch[0] : '未找到'}\n`;
+                if (dateMatch) {
+                    const date = `${dateMatch[1]}-${dateMatch[2].padStart(2, '0')}-${dateMatch[3].padStart(2, '0')}`;
+                    output.textContent += `格式化日期: ${date}\n`;
+                }
+
+                // 检测站点
+                const stationMatches = fullText.match(/[\u4e00-\u9fa5]+?站/g);
+                output.textContent += `站点: ${stationMatches ? stationMatches.join(', ') : '未找到'}\n`;
+
+                // 检测英文站名
+                output.textContent += `\n包含 Beijingnan: ${fullText.includes('Beijingnan')}\n`;
+                output.textContent += `包含 Hangzhoudong: ${fullText.includes('Hangzhoudong')}\n`;
+
+                // 检测车次
+                const trainMatch = fullText.match(/([GDCZTKY]\d{2,4})/);
+                output.textContent += `车次: ${trainMatch ? trainMatch[1] : '未找到'}\n`;
+
+                // 检测金额
+                const amountMatches = Array.from(fullText.matchAll(/[¥￥]\s*(\d+\.?\d*)/g));
+                output.textContent += `金额: ${amountMatches.map(m => m[1]).join(', ')}\n`;
+
+            } catch (error) {
+                output.textContent = '解析错误: ' + error.message;
+                console.error(error);
+            }
+        }
+    </script>
+</body>
+</html>

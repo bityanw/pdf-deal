@@ -399,6 +399,15 @@ function parseTrainTicket(text: string, data: InvoiceData): ParseResult {
       data.departureDate = `${travelDateMatch[1]}-${travelDateMatch[2].padStart(2, '0')}-${travelDateMatch[3].padStart(2, '0')}`;
       debugLogs.push(`[DEBUG] 提取乘车日期: ${data.departureDate}`);
     }
+
+    // 备选：匹配 "2026 年 01 月 16 日" 格式（带空格）
+    if (!data.departureDate) {
+      const spacedDateMatch = text.match(/(\d{4})\s*年\s*(\d{1,2})\s*月\s*(\d{1,2})\s*日/);
+      if (spacedDateMatch) {
+        data.departureDate = `${spacedDateMatch[1]}-${spacedDateMatch[2].padStart(2, '0')}-${spacedDateMatch[3].padStart(2, '0')}`;
+        debugLogs.push(`[DEBUG] 提取乘车日期（带空格格式）: ${data.departureDate}`);
+      }
+    }
     
     // 备选：从文件名提取日期（如"北京-济南5月26日187.pdf"）
     if (!data.departureDate && data.fileName) {
@@ -487,8 +496,58 @@ function parseTrainTicket(text: string, data: InvoiceData): ParseResult {
     // 提取出发站和到达站
     // 从文本中提取所有站点（中文+站）
     const stationMatches = text.match(/[\u4e00-\u9fa5]+?站/g);
-    debugLogs.push(`[DEBUG] 找到站点: ${stationMatches?.join(', ') || '无'}`);
-    
+    debugLogs.push(`[DEBUG] 找到中文站点: ${stationMatches?.join(', ') || '无'}`);
+
+    // 提取英文站名（如 Beijingnan, Hangzhoudong）
+    const englishStationMatches = text.match(/[A-Z][a-z]+(?:nan|dong|xi|bei|zhong|[a-z]+)/g);
+    debugLogs.push(`[DEBUG] 找到英文站点: ${englishStationMatches?.join(', ') || '无'}`);
+
+    // 英文站名到中文的映射
+    const stationNameMap: { [key: string]: string } = {
+      'Beijingnan': '北京南站',
+      'Beijing': '北京站',
+      'Beijingxi': '北京西站',
+      'Hangzhoudong': '杭州东站',
+      'Hangzhou': '杭州站',
+      'Shanghainan': '上海南站',
+      'Shanghai': '上海站',
+      'Shanghaihongqiao': '上海虹桥站',
+      'Guangzhoudong': '广州东站',
+      'Guangzhou': '广州站',
+      'Guangzhounan': '广州南站',
+      'Shenzhenbei': '深圳北站',
+      'Shenzhen': '深圳站',
+      'Tianjinnan': '天津南站',
+      'Tianjin': '天津站',
+      'Nanjingnan': '南京南站',
+      'Nanjing': '南京站',
+      'Suzhoubei': '苏州北站',
+      'Suzhou': '苏州站',
+      'Wuxi': '无锡站',
+      'Changzhou': '常州站',
+      'Zhengzhoudong': '郑州东站',
+      'Zhengzhou': '郑州站',
+      'Xian': '西安站',
+      'Xianbei': '西安北站',
+      'Chengdudong': '成都东站',
+      'Chengdu': '成都站',
+      'Chongqingbei': '重庆北站',
+      'Chongqing': '重庆站',
+      'Wuhan': '武汉站',
+      'Changsha': '长沙站',
+      'Changshanan': '长沙南站',
+    };
+
+    // 如果找到英文站名，转换为中文
+    if (englishStationMatches && englishStationMatches.length >= 2) {
+      const firstStation = englishStationMatches[0];
+      const secondStation = englishStationMatches[englishStationMatches.length - 1];
+
+      data.departure = stationNameMap[firstStation] || firstStation;
+      data.destination = stationNameMap[secondStation] || secondStation;
+
+      debugLogs.push(`[DEBUG] 从英文站名提取: ${data.departure} -> ${data.destination}`);
+    }
     // 从文件名提取地点（优先使用）
     let fromFile = '';
     let toFile = '';
@@ -500,18 +559,19 @@ function parseTrainTicket(text: string, data: InvoiceData): ParseResult {
         debugLogs.push(`[DEBUG] 从文件名提取地点: ${fromFile} -> ${toFile}`);
       }
     }
-    
-    if (stationMatches && stationMatches.length > 0) {
+
+    // 如果没有从英文站名提取到，尝试从中文站名提取
+    if (!data.departure && !data.destination && stationMatches && stationMatches.length > 0) {
       // 去重并过滤
       const uniqueStations = [...new Set(stationMatches)];
-      const validStations = uniqueStations.filter(s => 
-        s !== '国家税务总局' && 
+      const validStations = uniqueStations.filter(s =>
+        s !== '国家税务总局' &&
         s !== '统一社会信用代码' &&
         s.length <= 6 &&
         s !== '站'
       );
-      debugLogs.push(`[DEBUG] 有效站点: ${validStations.join(', ')}`);
-      
+      debugLogs.push(`[DEBUG] 有效中文站点: ${validStations.join(', ')}`);
+
       // 根据文件名匹配站点
       if (fromFile && toFile && validStations.length >= 2) {
         for (const station of validStations) {
@@ -523,7 +583,7 @@ function parseTrainTicket(text: string, data: InvoiceData): ParseResult {
           }
         }
       }
-      
+
       // 如果没匹配到，使用第一个和第二个站点
       if (!data.departure && validStations.length >= 1) {
         data.departure = validStations[0];
@@ -532,7 +592,7 @@ function parseTrainTicket(text: string, data: InvoiceData): ParseResult {
         data.destination = validStations[1];
       }
     }
-    
+
     // 如果从文件名提取到了地点但站点没匹配到，直接使用文件名地点
     if ((!data.departure || !data.destination) && fromFile && toFile) {
       if (!data.departure) data.departure = fromFile;
