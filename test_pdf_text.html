@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>PDF文本提取测试</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+</head>
+<body>
+  <h1>PDF文本提取测试</h1>
+  <input type="file" id="fileInput" accept=".pdf">
+  <pre id="output" style="white-space: pre-wrap; border: 1px solid #ccc; padding: 10px; margin-top: 20px;"></pre>
+
+  <script>
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+    document.getElementById('fileInput').addEventListener('change', async (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+
+      const arrayBuffer = await file.arrayBuffer();
+      const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+
+      let fullText = '';
+      for (let i = 1; i <= pdf.numPages; i++) {
+        const page = await pdf.getPage(i);
+        const textContent = await page.getTextContent();
+        const pageText = textContent.items.map(item => item.str).join('\n');
+        fullText += `=== 第 ${i} 页 ===\n${pageText}\n\n`;
+      }
+
+      document.getElementById('output').textContent = fullText;
+
+      // 查找日期相关的文本
+      console.log('查找"开票日期":', fullText.match(/开票日期.{0,50}/g));
+      console.log('查找"日期":', fullText.match(/日期.{0,50}/g));
+      console.log('查找年月日:', fullText.match(/\d{4}.{0,5}年.{0,5}\d{1,2}.{0,5}月.{0,5}\d{1,2}.{0,5}日/g));
+      console.log('查找YYYY-MM-DD:', fullText.match(/\d{4}[-/]\d{1,2}[-/]\d{1,2}/g));
+    });
+  </script>
+</body>
+</html>

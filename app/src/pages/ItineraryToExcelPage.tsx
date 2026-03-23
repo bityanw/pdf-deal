@@ -19,18 +19,19 @@ export function ItineraryToExcelPage() {
                   <Table className="w-6 h-6 text-white" />
                 </div>
                 <h1 className="text-3xl md:text-4xl font-bold text-gray-900">
-                  PDF行程单转Excel
+                  PDF发票/行程单转Excel报销表
                 </h1>
               </div>
-              
+
               <p className="text-lg text-gray-600 mb-8 leading-relaxed">
-                智能识别各类差旅行程单，自动转换为Excel报销明细表。
-                支持高德/滴滴打车行程单、铁路电子客票、机票行程单、酒店住宿水单等多种格式。
+                智能识别发票和差旅行程单，自动比对匹配，生成标准报销明细表。
+                支持电子发票、高德/滴滴打车行程单、铁路电子客票、机票行程单、酒店住宿水单等多种格式。
               </p>
 
               {/* 支持的类型 */}
               <div className="flex flex-wrap justify-center gap-3">
                 {[
+                  { icon: '📄', text: '电子发票' },
                   { icon: '🚕', text: '打车行程单' },
                   { icon: '🚄', text: '火车票' },
                   { icon: '✈️', text: '机票' },
@@ -66,9 +67,9 @@ export function ItineraryToExcelPage() {
                 <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center mb-4">
                   <span className="text-blue-600 font-bold">1</span>
                 </div>
-                <h3 className="font-semibold text-gray-900 mb-2">上传行程单</h3>
+                <h3 className="font-semibold text-gray-900 mb-2">上传文件</h3>
                 <p className="text-sm text-gray-600">
-                  支持批量上传PDF格式的打车行程单、火车票、机票、住宿水单。删除文件后结果会自动更新。
+                  支持批量上传PDF格式的发票和行程单。删除文件后结果会自动更新。
                 </p>
               </div>
               
@@ -76,9 +77,9 @@ export function ItineraryToExcelPage() {
                 <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center mb-4">
                   <span className="text-blue-600 font-bold">2</span>
                 </div>
-                <h3 className="font-semibold text-gray-900 mb-2">自动识别</h3>
+                <h3 className="font-semibold text-gray-900 mb-2">自动识别与比对</h3>
                 <p className="text-sm text-gray-600">
-                  系统自动识别行程单类型，提取日期、金额、行程等关键信息。识别失败会提示具体原因。
+                  系统自动识别文件类型，提取关键信息，并智能比对发票与行程单的对应关系。
                 </p>
               </div>
               
@@ -100,8 +101,8 @@ export function ItineraryToExcelPage() {
                 <p className="font-medium mb-1">注意事项：</p>
                 <ul className="list-disc list-inside text-sm space-y-1">
                   <li>请确保上传的PDF文件清晰可读，扫描件可能无法识别</li>
-                  <li>系统会自动识别行程单类型，如果识别错误可尝试重新上传</li>
-                  <li>解析失败时会显示具体原因，可根据提示检查文件</li>
+                  <li>系统会自动识别文件类型（发票/行程单）并进行智能比对</li>
+                  <li>发票与行程单会自动匹配，异常情况会在比对结果中显示</li>
                   <li>建议单个文件大小不超过10MB，批量上传最多50个文件</li>
                 </ul>
               </AlertDescription>

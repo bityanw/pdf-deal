@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react';
-import { FileText, Download, RotateCcw, Check, AlertCircle, Eye, FileSpreadsheet } from 'lucide-react';
+import { FileText, Download, RotateCcw, Check, AlertCircle, Eye, FileSpreadsheet, Printer } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
@@ -31,6 +31,8 @@ export function InvoiceMergeTool() {
   const [result, setResult] = useState<ProcessingResult | null>(null);
   const [expenseDetailRows, setExpenseDetailRows] = useState<ExpenseDetailRow[]>([]);
   const [showExpensePreview, setShowExpensePreview] = useState(false);
+  const [sortedInvoices, setSortedInvoices] = useState<InvoiceData[]>([]);
+  const [showPrintListPreview, setShowPrintListPreview] = useState(false);
 
   const handleConvert = useCallback(async () => {
     // 先解析发票数据
@@ -40,7 +42,11 @@ export function InvoiceMergeTool() {
         const parseResult = await parseItineraryPDF(file.file);
         console.log(`解析文件 ${file.name}:`, parseResult);
         if (parseResult.success) {
-          parsedInvoices.push(parseResult.data);
+          // 将文件ID关联到发票数据
+          parsedInvoices.push({
+            ...parseResult.data,
+            id: file.id, // 使用文件ID
+          });
         }
       } catch (error) {
         console.error(`解析发票失败: ${file.name}`, error);
@@ -49,13 +55,71 @@ export function InvoiceMergeTool() {
 
     console.log('所有解析的发票:', parsedInvoices);
 
+    // 按日期排序发票（升序：最早的在前）
+    // 如果日期相同或都没有日期，则按文件名排序
+    parsedInvoices.sort((a, b) => {
+      const dateA = a.invoiceDate || a.departureDate || '';
+      const dateB = b.invoiceDate || b.departureDate || '';
+
+      // 如果两个都有日期，按日期排序
+      if (dateA && dateB) {
+        const dateCompare = dateA.localeCompare(dateB);
+        if (dateCompare !== 0) return dateCompare;
+        // 日期相同，按文件名排序
+        return (a.fileName || '').localeCompare(b.fileName || '');
+      }
+
+      // 如果只有一个有日期，有日期的排在前面
+      if (dateA && !dateB) return -1;
+      if (!dateA && dateB) return 1;
+
+      // 如果都没有日期，按文件名排序
+      return (a.fileName || '').localeCompare(b.fileName || '');
+    });
+
+    console.log('排序后的发票:', parsedInvoices);
+
+    // 保存排序后的发票数据
+    setSortedInvoices(parsedInvoices);
+
+    // 分离发票和行程单
+    const invoiceList = parsedInvoices.filter(inv =>
+      inv.invoiceType?.startsWith('invoice_')
+    );
+    const itineraryList = parsedInvoices.filter(inv =>
+      !inv.invoiceType?.startsWith('invoice_')
+    );
+
+    console.log('发票列表:', invoiceList);
+    console.log('行程单列表:', itineraryList);
+
+    // 先排列发票，再排列行程单
+    const invoiceFiles = invoiceList
+      .map(invoice => files.find(f => f.id === invoice.id))
+      .filter(Boolean) as typeof files;
+
+    const itineraryFiles = itineraryList
+      .map(itinerary => files.find(f => f.id === itinerary.id))
+      .filter(Boolean) as typeof files;
+
+    // 合并顺序：发票在前，行程单在后
+    const sortedFiles = [...invoiceFiles, ...itineraryFiles];
+
+    // 添加未解析成功的文件到末尾
+    const parsedFileIds = new Set(parsedInvoices.map(inv => inv.id));
+    const unparsedFiles = files.filter(f => !parsedFileIds.has(f.id));
+    const finalSortedFiles = [...sortedFiles, ...unparsedFiles];
+
+    console.log('最终文件顺序:', finalSortedFiles.map(f => f.name));
+    console.log(`发票: ${invoiceFiles.length}张, 行程单: ${itineraryFiles.length}张`);
+
     // 生成费用明细表数据
     const expenseRows = convertToExpenseDetailRows(parsedInvoices);
     console.log('费用明细表行数据:', expenseRows);
     setExpenseDetailRows(expenseRows);
 
-    // 执行PDF合并
-    const result = await mergeInvoices(options);
+    // 执行PDF合并（使用排序后的文件，传递分组信息）
+    const result = await mergeInvoices(options, finalSortedFiles, invoiceFiles.length);
     setResult(result);
   }, [mergeInvoices, options, files]);
 
@@ -75,6 +139,8 @@ export function InvoiceMergeTool() {
     setResult(null);
     setExpenseDetailRows([]);
     setShowExpensePreview(false);
+    setSortedInvoices([]);
+    setShowPrintListPreview(false);
   }, [clearFiles]);
 
   const handleExportExpenseDetail = useCallback(() => {
@@ -90,6 +156,76 @@ export function InvoiceMergeTool() {
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
   }, [expenseDetailRows]);
+
+  // 生成打印清单
+  const handleExportPrintList = useCallback(() => {
+    if (sortedInvoices.length === 0) return;
+
+    const XLSX = window.XLSX;
+    if (!XLSX) {
+      alert('Excel库未加载，请刷新页面重试');
+      return;
+    }
+
+    const wb = XLSX.utils.book_new();
+
+    // 准备数据
+    const data: (string | number)[][] = [
+      ['发票打印清单', '', '', '', '', ''],
+      ['打印日期：', new Date().toLocaleDateString('zh-CN'), '', '', '', ''],
+      ['总计：', `${sortedInvoices.length} 张发票`, '', '', '', ''],
+      [],
+      ['序号', '文件名', '发票日期', '发票号码', '金额（元）', '备注'],
+    ];
+
+    // 数据行
+    sortedInvoices.forEach((invoice, index) => {
+      data.push([
+        index + 1,
+        invoice.fileName || '',
+        invoice.invoiceDate || invoice.departureDate || '未识别',
+        invoice.invoiceNumber || '',
+        invoice.amountWithTax || invoice.totalAmount || 0,
+        invoice.invoiceType?.startsWith('invoice_') ? '发票' : '行程单'
+      ]);
+    });
+
+    // 合计行
+    const totalAmount = sortedInvoices.reduce((sum, inv) =>
+      sum + (inv.amountWithTax || inv.totalAmount || 0), 0
+    );
+    data.push([
+      '',
+      '合计',
+      '',
+      '',
+      totalAmount,
+      ''
+    ]);
+
+    // 创建工作表
+    const ws = XLSX.utils.aoa_to_sheet(data);
+
+    // 设置列宽
+    ws['!cols'] = [
+      { wch: 8 },   // 序号
+      { wch: 35 },  // 文件名
+      { wch: 15 },  // 发票日期
+      { wch: 20 },  // 发票号码
+      { wch: 15 },  // 金额
+      { wch: 12 }   // 备注
+    ];
+
+    // 合并单元格
+    ws['!merges'] = [
+      { s: { r: 0, c: 0 }, e: { r: 0, c: 5 } },  // 标题行
+    ];
+
+    XLSX.utils.book_append_sheet(wb, ws, '打印清单');
+
+    // 导出
+    XLSX.writeFile(wb, `发票打印清单_${new Date().toISOString().slice(0, 10)}.xlsx`);
+  }, [sortedInvoices]);
 
   return (
     <div className="w-full max-w-4xl mx-auto space-y-6">
@@ -183,6 +319,18 @@ export function InvoiceMergeTool() {
             </RadioGroup>
           </div>
 
+          {/* 排序说明 */}
+          <Alert className="bg-blue-50 border-blue-200">
+            <AlertCircle className="w-4 h-4 text-blue-600" />
+            <AlertDescription className="text-blue-700 text-sm">
+              <div className="space-y-1">
+                <p>• 发票将按照开票日期自动排序（从早到晚）</p>
+                <p>• 发票和行程单会分开打印，不会混在同一页</p>
+                <p>• 打印顺序：先打印所有发票，再打印所有行程单</p>
+              </div>
+            </AlertDescription>
+          </Alert>
+
           {/* 操作按钮 */}
           <div className="flex flex-wrap gap-3 pt-4">
             <Button
@@ -248,6 +396,93 @@ export function InvoiceMergeTool() {
                     <Download className="w-4 h-4 mr-2" />
                     下载合并PDF
                   </Button>
+
+                  {/* 打印清单按钮 */}
+                  {sortedInvoices.length > 0 && (
+                    <div className="space-y-3">
+                      <div className="flex gap-3">
+                        <Button
+                          onClick={() => setShowPrintListPreview(!showPrintListPreview)}
+                          variant="outline"
+                          className="flex-1"
+                        >
+                          <Eye className="w-4 h-4 mr-2" />
+                          {showPrintListPreview ? '隐藏' : '预览'}打印清单
+                        </Button>
+                        <Button
+                          onClick={handleExportPrintList}
+                          className="flex-1 bg-purple-500 hover:bg-purple-600 text-white"
+                        >
+                          <Printer className="w-4 h-4 mr-2" />
+                          导出打印清单
+                        </Button>
+                      </div>
+
+                      {showPrintListPreview && (
+                        <div className="border rounded-lg overflow-hidden">
+                          <div className="bg-gray-100 px-4 py-3 border-b">
+                            <h3 className="font-bold text-center">发票打印清单</h3>
+                            <div className="text-sm text-gray-600 mt-1 flex justify-between">
+                              <span>打印日期：{new Date().toLocaleDateString('zh-CN')}</span>
+                              <span>总计：{sortedInvoices.length} 张发票</span>
+                            </div>
+                          </div>
+                          <div className="overflow-x-auto">
+                            <table className="w-full text-sm">
+                              <thead className="bg-gray-50">
+                                <tr>
+                                  <th className="px-4 py-2 text-center border">序号</th>
+                                  <th className="px-4 py-2 text-left border">文件名</th>
+                                  <th className="px-4 py-2 text-left border">发票日期</th>
+                                  <th className="px-4 py-2 text-left border">发票号码</th>
+                                  <th className="px-4 py-2 text-right border">金额（元）</th>
+                                  <th className="px-4 py-2 text-center border">备注</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {sortedInvoices.map((invoice, index) => (
+                                  <tr key={invoice.id} className="hover:bg-gray-50">
+                                    <td className="px-4 py-2 text-center border">{index + 1}</td>
+                                    <td className="px-4 py-2 border text-xs" title={invoice.fileName}>
+                                      {invoice.fileName && invoice.fileName.length > 30
+                                        ? invoice.fileName.substring(0, 30) + '...'
+                                        : invoice.fileName}
+                                    </td>
+                                    <td className="px-4 py-2 border">
+                                      {invoice.invoiceDate || invoice.departureDate || (
+                                        <span className="text-gray-400">未识别</span>
+                                      )}
+                                    </td>
+                                    <td className="px-4 py-2 border text-xs">
+                                      {invoice.invoiceNumber || '-'}
+                                    </td>
+                                    <td className="px-4 py-2 text-right border">
+                                      {(invoice.amountWithTax || invoice.totalAmount || 0).toFixed(2)}
+                                    </td>
+                                    <td className="px-4 py-2 text-center border text-xs">
+                                      {invoice.invoiceType?.startsWith('invoice_') ? '发票' : '行程单'}
+                                    </td>
+                                  </tr>
+                                ))}
+                                <tr className="bg-yellow-50 font-bold">
+                                  <td className="px-4 py-2 border"></td>
+                                  <td className="px-4 py-2 border">合计</td>
+                                  <td className="px-4 py-2 border"></td>
+                                  <td className="px-4 py-2 border"></td>
+                                  <td className="px-4 py-2 text-right border">
+                                    {sortedInvoices.reduce((sum, inv) =>
+                                      sum + (inv.amountWithTax || inv.totalAmount || 0), 0
+                                    ).toFixed(2)}
+                                  </td>
+                                  <td className="px-4 py-2 border"></td>
+                                </tr>
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
 
                   {expenseDetailRows.length > 0 && (
                     <div className="space-y-3 mt-4">

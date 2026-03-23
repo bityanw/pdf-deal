@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react';
-import { Download, RotateCcw, Check, AlertCircle, Table, Eye, EyeOff, Train, Plane, Hotel, Car, FileSpreadsheet, Receipt } from 'lucide-react';
+import { Download, RotateCcw, Check, AlertCircle, Table, Eye, EyeOff, Train, Plane, Hotel, Car, FileSpreadsheet, Receipt, CheckCircle2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Alert, AlertDescription } from '@/components/ui/alert';
@@ -7,6 +7,7 @@ import { FileUpload } from './FileUpload';
 import { useInvoiceToExcel } from '@/hooks/useInvoiceToExcel';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
+import { getMatchStatusText, getMatchStatusColor } from '@/utils/matchingEngine';
 
 // 判断是否为发票类型
 const isInvoiceType = (type?: string): boolean => {
@@ -61,6 +62,8 @@ export function InvoiceToExcelTool() {
     previewData,
     statistics,
     duplicates,
+    matchResults,
+    matchStats,
     addFiles,
     removeFile,
     clearFiles,
@@ -68,6 +71,7 @@ export function InvoiceToExcelTool() {
   } = useInvoiceToExcel();
 
   const [showDetails, setShowDetails] = useState(false);
+  const [showMatchDetails, setShowMatchDetails] = useState(false);
 
   const handleDownload = useCallback(() => {
     downloadExcel();
@@ -88,7 +92,7 @@ export function InvoiceToExcelTool() {
         <CardHeader className="pb-4">
           <CardTitle className="text-lg flex items-center gap-2">
             <span className="w-6 h-6 rounded-full bg-blue-500 text-white text-sm flex items-center justify-center">1</span>
-            上传行程单
+            上传发票和行程单
             <span className="text-sm font-normal text-gray-500">（同时最大 50 份，单个文件最大10MB）</span>
           </CardTitle>
         </CardHeader>
@@ -179,7 +183,11 @@ export function InvoiceToExcelTool() {
                   </div>
                   <div className="text-center">
                     <div className="text-2xl font-bold text-gray-500">{statistics.invoice}</div>
-                    <div className="text-xs text-gray-600">发票(跳过)</div>
+                    <div className="text-xs text-gray-600">发票</div>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-2xl font-bold text-blue-500">{statistics.itinerary}</div>
+                    <div className="text-xs text-blue-600">行程单</div>
                   </div>
                 </div>
                 {statistics.success > 0 && (
@@ -217,6 +225,114 @@ export function InvoiceToExcelTool() {
                         </Badge>
                       )}
                     </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* 比对结果 */}
+            {matchStats && matchStats.total > 0 && (
+              <div className="bg-purple-50 rounded-lg p-4 border border-purple-100">
+                <div className="flex items-center justify-between mb-3">
+                  <h4 className="text-sm font-medium text-purple-800 flex items-center gap-2">
+                    <CheckCircle2 className="w-4 h-4" />
+                    发票与行程单比对结果
+                  </h4>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setShowMatchDetails(!showMatchDetails)}
+                    className="text-purple-600 hover:text-purple-700"
+                  >
+                    {showMatchDetails ? <EyeOff className="w-4 h-4 mr-1" /> : <Eye className="w-4 h-4 mr-1" />}
+                    {showMatchDetails ? '收起' : '展开'}
+                  </Button>
+                </div>
+
+                <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+                  <div className="text-center">
+                    <div className="text-2xl font-bold text-green-600">{matchStats.matched}</div>
+                    <div className="text-xs text-green-700">完全匹配</div>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-2xl font-bold text-orange-600">{matchStats.invoiceMissing}</div>
+                    <div className="text-xs text-orange-700">发票缺行程单</div>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-2xl font-bold text-yellow-600">{matchStats.itineraryMissing}</div>
+                    <div className="text-xs text-yellow-700">行程单缺发票</div>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-2xl font-bold text-red-600">{matchStats.amountMismatch}</div>
+                    <div className="text-xs text-red-700">金额不符</div>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-2xl font-bold text-red-600">{matchStats.dateMismatch}</div>
+                    <div className="text-xs text-red-700">日期不符</div>
+                  </div>
+                </div>
+
+                {/* 比对详情表格 */}
+                {showMatchDetails && (
+                  <div className="mt-4 overflow-x-auto border rounded-lg bg-white">
+                    <table className="w-full text-sm">
+                      <thead className="bg-gray-50">
+                        <tr>
+                          <th className="px-3 py-2 text-left font-medium text-gray-700">状态</th>
+                          <th className="px-3 py-2 text-left font-medium text-gray-700">发票</th>
+                          <th className="px-3 py-2 text-left font-medium text-gray-700">行程单</th>
+                          <th className="px-3 py-2 text-left font-medium text-gray-700">日期</th>
+                          <th className="px-3 py-2 text-right font-medium text-gray-700">金额</th>
+                          <th className="px-3 py-2 text-left font-medium text-gray-700">说明</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-100">
+                        {matchResults.map((match) => (
+                          <tr key={match.id} className="hover:bg-gray-50">
+                            <td className="px-3 py-2">
+                              <Badge className={getMatchStatusColor(match.status)}>
+                                {getMatchStatusText(match.status)}
+                              </Badge>
+                            </td>
+                            <td className="px-3 py-2 max-w-[150px] truncate" title={match.invoice?.fileName}>
+                              {match.invoice?.fileName || '-'}
+                            </td>
+                            <td className="px-3 py-2 max-w-[150px] truncate" title={match.itinerary?.fileName}>
+                              {match.itinerary?.fileName || '-'}
+                            </td>
+                            <td className="px-3 py-2">
+                              {match.invoice?.invoiceDate || match.itinerary?.departureDate || '-'}
+                              {match.dateDiff !== undefined && match.dateDiff > 0 && (
+                                <span className="text-xs text-red-600 ml-1">
+                                  (±{match.dateDiff}天)
+                                </span>
+                              )}
+                            </td>
+                            <td className="px-3 py-2 text-right">
+                              {match.invoice?.amountWithTax && match.itinerary?.amountWithTax ? (
+                                match.invoice.amountWithTax !== match.itinerary.amountWithTax ? (
+                                  <span className="text-red-600">
+                                    ¥{match.invoice.amountWithTax.toFixed(2)} ≠ ¥{match.itinerary.amountWithTax.toFixed(2)}
+                                  </span>
+                                ) : (
+                                  `¥${match.invoice.amountWithTax.toFixed(2)}`
+                                )
+                              ) : (
+                                `¥${(match.invoice?.amountWithTax || match.itinerary?.amountWithTax || 0).toFixed(2)}`
+                              )}
+                            </td>
+                            <td className="px-3 py-2 text-xs text-gray-600">
+                              {match.reason || '-'}
+                              {match.confidence !== undefined && (
+                                <span className="ml-1 text-gray-400">
+                                  ({match.confidence}%)
+                                </span>
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
                   </div>
                 )}
               </div>
@@ -400,17 +516,18 @@ export function InvoiceToExcelTool() {
               <li><strong>含个人信息交通费-飞机</strong> - 含个人信息的机票费用</li>
               <li><strong>铁路费</strong> - 火车票费用</li>
               <li><strong>公路水路费</strong> - 轮船、大巴费用</li>
+              <li><strong>旅客运输服务电子发票</strong> - 打车发票、运输服务发票</li>
               <li><strong>不含个人信息交通费-飞机</strong> - 不含个人信息的机票</li>
               <li><strong>火车、轮船、大巴</strong> - 其他交通工具费用</li>
               <li><strong>的士、公交</strong> - 出租车、地铁、公交费用</li>
-              <li><strong>住宿费</strong> - 酒店住宿费用</li>
-              <li><strong>其它</strong> - 其他费用</li>
-              <li><strong>餐补</strong> - 出差餐费补贴（默认70元）</li>
+              <li><strong>住宿费</strong> - 酒店住宿费用、住宿发票</li>
+              <li><strong>其它</strong> - 其他费用、其他类型发票</li>
+              <li><strong>餐补</strong> - 出差餐费补贴（默认50元）</li>
               <li><strong>小计</strong> - 各项费用合计</li>
               <li><strong>备注</strong> - 备注信息</li>
             </ul>
             <p className="text-xs text-gray-500 mt-4">
-              提示：系统会自动识别行程单类型并分类到对应的费用栏目。删除某个行程单后，结果会自动更新。
+              提示：系统会自动识别文件类型（发票/行程单）并分类到对应的费用栏目，同时进行智能比对。
             </p>
           </div>
         </CardContent>

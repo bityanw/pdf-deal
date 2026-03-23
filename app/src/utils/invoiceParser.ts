@@ -2,7 +2,7 @@ import type { InvoiceData, ExcelRowData } from '@/types/pdf';
 import type { ExpenseDetailRow } from '@/types/invoice';
 
 // 行程单类型（包含发票类型）
-type ItineraryType = 'taxi' | 'train' | 'flight' | 'hotel' | 'other' | 'invoice_transport' | 'invoice_hotel' | 'invoice_other';
+type ItineraryType = 'taxi' | 'train' | 'flight' | 'hotel' | 'other' | 'invoice_transport' | 'invoice_hotel' | 'invoice_food' | 'invoice_other';
 
 // 解析结果
 interface ParseResult {
@@ -58,9 +58,17 @@ export async function parseItineraryPDF(file: File): Promise<ParseResult> {
       invoiceData.invoiceType = pdfTypeInfo.subtype || 'invoice_other';
 
       // 提取发票号码
-      const invoiceNumberMatch = fullText.match(/发票号码[：:]\s*(\d{8,20})/);
+      let invoiceNumberMatch = fullText.match(/发票号码[：:]\s*(\d{8,20})/);
       if (invoiceNumberMatch) {
         invoiceData.invoiceNumber = invoiceNumberMatch[1];
+      }
+
+      // 备选：从文件名提取发票号码（如"26112000000851142181-公司名.pdf"）
+      if (!invoiceData.invoiceNumber && file.name) {
+        const fileInvoiceMatch = file.name.match(/(\d{20,})/);
+        if (fileInvoiceMatch) {
+          invoiceData.invoiceNumber = fileInvoiceMatch[1];
+        }
       }
 
       // 提取发票代码
@@ -69,10 +77,64 @@ export async function parseItineraryPDF(file: File): Promise<ParseResult> {
         invoiceData.invoiceCode = invoiceCodeMatch[1];
       }
 
-      // 提取开票日期
-      const dateMatch = fullText.match(/开票日期[：:]\s*(\d{4})年(\d{1,2})月(\d{1,2})日/);
+      // 提取开票日期 - 多种格式
+      let dateMatch = fullText.match(/开票日期[：:]\s*(\d{4})年(\d{1,2})月(\d{1,2})日/);
       if (dateMatch) {
         invoiceData.invoiceDate = `${dateMatch[1]}-${dateMatch[2].padStart(2, '0')}-${dateMatch[3].padStart(2, '0')}`;
+      }
+
+      // 备选：匹配带空格的日期格式 "2026 年 01 月 16 日"
+      if (!invoiceData.invoiceDate) {
+        dateMatch = fullText.match(/开票日期[：:]\s*(\d{4})\s*年\s*(\d{1,2})\s*月\s*(\d{1,2})\s*日/);
+        if (dateMatch) {
+          invoiceData.invoiceDate = `${dateMatch[1]}-${dateMatch[2].padStart(2, '0')}-${dateMatch[3].padStart(2, '0')}`;
+        }
+      }
+
+      // 备选：匹配 YYYY-MM-DD 格式
+      if (!invoiceData.invoiceDate) {
+        dateMatch = fullText.match(/(\d{4})[-/](\d{1,2})[-/](\d{1,2})/);
+        if (dateMatch) {
+          invoiceData.invoiceDate = `${dateMatch[1]}-${dateMatch[2].padStart(2, '0')}-${dateMatch[3].padStart(2, '0')}`;
+        }
+      }
+
+      // 备选：从文件名提取日期
+      if (!invoiceData.invoiceDate && file.name) {
+        // 匹配格式: YYYY-MM-DD 或 YYYYMMDD
+        const fileNameDateMatch = file.name.match(/(\d{4})[-_]?(\d{2})[-_]?(\d{2})/);
+        if (fileNameDateMatch) {
+          invoiceData.invoiceDate = `${fileNameDateMatch[1]}-${fileNameDateMatch[2]}-${fileNameDateMatch[3]}`;
+        } else {
+          // 匹配格式: X月X日 或 XX月XX日
+          const fileMonthDayMatch = file.name.match(/(\d{1,2})月(\d{1,2})日/);
+          if (fileMonthDayMatch) {
+            // 使用当前年份
+            const year = new Date().getFullYear().toString();
+            invoiceData.invoiceDate = `${year}-${fileMonthDayMatch[1].padStart(2, '0')}-${fileMonthDayMatch[2].padStart(2, '0')}`;
+          }
+        }
+      }
+
+      // 备选：从发票号码提取日期（中国电子发票格式：2位地区码+6位日期YYMMDD+12位流水号）
+      if (!invoiceData.invoiceDate && invoiceData.invoiceNumber && invoiceData.invoiceNumber.length >= 8) {
+        // 尝试提取发票号码中的日期部分（第3-8位）
+        const invoiceNumDatePart = invoiceData.invoiceNumber.substring(2, 8);
+        if (/^\d{6}$/.test(invoiceNumDatePart)) {
+          const year = parseInt(invoiceNumDatePart.substring(0, 2));
+          const month = invoiceNumDatePart.substring(2, 4);
+          const day = invoiceNumDatePart.substring(4, 6);
+
+          // 判断年份（20xx 或 19xx）
+          const fullYear = year >= 0 && year <= 50 ? `20${invoiceNumDatePart.substring(0, 2)}` : `19${invoiceNumDatePart.substring(0, 2)}`;
+
+          // 验证日期是否合理
+          const monthNum = parseInt(month);
+          const dayNum = parseInt(day);
+          if (monthNum >= 1 && monthNum <= 12 && dayNum >= 1 && dayNum <= 31) {
+            invoiceData.invoiceDate = `${fullYear}-${month}-${day}`;
+          }
+        }
       }
 
       // 提取价税合计
@@ -168,23 +230,35 @@ export function detectPDFType(text: string, fileName?: string): { type: PDFType;
     // 检测发票类型
     const isTransportInvoice = checkText.includes('运输服务') || checkText.includes('客运服务') || checkText.includes('代订车服务');
     const isHotelInvoice = checkText.includes('住宿服务') || checkText.includes('代订住宿') || checkText.includes('经纪代理服务');
-    
+    const isFoodInvoice = checkText.includes('餐饮服务') || checkText.includes('餐饮费') ||
+                          checkText.includes('*餐饮*') || checkText.includes('餐费') ||
+                          (checkText.includes('餐') && (checkText.includes('服务') || checkText.includes('饮')));
+
     logs.push(`[PDF类型检测] 运输服务发票: ${isTransportInvoice}`);
     logs.push(`[PDF类型检测] 住宿服务发票: ${isHotelInvoice}`);
-    
+    logs.push(`[PDF类型检测] 餐饮服务发票: ${isFoodInvoice}`);
+
     if (isTransportInvoice) {
-      return { 
-        type: 'invoice', 
+      return {
+        type: 'invoice',
         subtype: 'invoice_transport',
         reason: '检测到「电子发票-旅客运输服务」，这是发票文件，不是行程单。请上传高德/滴滴打车「行程单」PDF（非发票）',
         logs
       };
     }
     if (isHotelInvoice) {
-      return { 
-        type: 'invoice', 
+      return {
+        type: 'invoice',
         subtype: 'invoice_hotel',
         reason: '检测到「电子发票-住宿服务」，这是发票文件，不是住宿水单。请上传酒店「住宿水单」PDF（包含入住人、入离日期、房费等明细）',
+        logs
+      };
+    }
+    if (isFoodInvoice) {
+      return {
+        type: 'invoice',
+        subtype: 'invoice_food',
+        reason: '检测到「电子发票-餐饮服务」',
         logs
       };
     }
@@ -852,8 +926,8 @@ function parseGenericItinerary(text: string, data: InvoiceData): ParseResult {
 
 // 将发票数据转换为Excel行数据
 export function convertToExcelRows(invoices: InvoiceData[]): ExcelRowData[] {
-  // 过滤出发票类型的文件（不统计到表格中）
-  return invoices.filter(inv => inv.isValid && !inv.invoiceType?.startsWith('invoice_')).map(invoice => {
+  // 包含所有有效数据（发票和行程单）
+  return invoices.filter(inv => inv.isValid).map(invoice => {
     const row: ExcelRowData = {
       date: invoice.departureDate || invoice.invoiceDate || '',
       location: invoice.departure && invoice.destination 
@@ -873,44 +947,85 @@ export function convertToExcelRows(invoices: InvoiceData[]): ExcelRowData[] {
     };
 
     const amount = invoice.amountWithTax || invoice.totalAmount || 0;
-    
-    switch (invoice.vehicleType) {
-      case '飞机':
-        if (invoice.buyerName) {
-          row.planeWithInfo = amount;
-        } else {
-          row.planeWithoutInfo = amount;
-        }
-        break;
-        
-      case '火车':
-        row.railway = amount;
-        break;
-        
-      case '轮船':
-      case '大巴':
-        row.roadWater = amount;
-        break;
-        
-      case '的士（含个人信息）':
-        row.taxi = amount;
-        break;
-        
-      case '的士':
-        row.taxi = amount;
-        break;
-        
-      case '地铁':
-      case '公交':
-        row.trainBus = amount;
-        break;
-        
-      case '住宿':
-        row.accommodation = amount;
-        break;
-        
-      default:
-        row.other = amount;
+
+    // 获取发票类型的中文名称
+    const getInvoiceTypeName = (type?: string): string => {
+      switch (type) {
+        case 'invoice_transport': return '交通';
+        case 'invoice_hotel': return '住宿';
+        case 'invoice_food': return '餐饮';
+        case 'invoice_other': return '其他';
+        default: return '';
+      }
+    };
+
+    // 处理发票类型
+    if (invoice.invoiceType?.startsWith('invoice_')) {
+      const typeName = getInvoiceTypeName(invoice.invoiceType);
+
+      switch (invoice.invoiceType) {
+        case 'invoice_transport':
+          // 运输服务发票 -> 旅客运输服务电子发票列（暂时放到taxi列）
+          row.taxi = amount;
+          row.remarks = typeName;
+          break;
+        case 'invoice_hotel':
+          // 住宿服务发票 -> 住宿费
+          row.accommodation = amount;
+          row.remarks = typeName;
+          break;
+        case 'invoice_food':
+          // 餐饮服务发票 -> 其它
+          row.other = amount;
+          row.remarks = typeName;
+          break;
+        case 'invoice_other':
+        default:
+          // 其他发票 -> 其它
+          row.other = amount;
+          row.remarks = typeName || '其他';
+          break;
+      }
+    } else {
+      // 处理行程单类型
+      switch (invoice.vehicleType) {
+        case '飞机':
+          if (invoice.buyerName) {
+            row.planeWithInfo = amount;
+          } else {
+            row.planeWithoutInfo = amount;
+          }
+          break;
+
+        case '火车':
+          row.railway = amount;
+          break;
+
+        case '轮船':
+        case '大巴':
+          row.roadWater = amount;
+          break;
+
+        case '的士（含个人信息）':
+          row.taxi = amount;
+          break;
+
+        case '的士':
+          row.taxi = amount;
+          break;
+
+        case '地铁':
+        case '公交':
+          row.trainBus = amount;
+          break;
+
+        case '住宿':
+          row.accommodation = amount;
+          break;
+
+        default:
+          row.other = amount;
+      }
     }
     
     row.subtotal = row.planeWithInfo + row.railway + row.roadWater + 
@@ -1070,14 +1185,35 @@ export function generateExcel(rows: ExcelRowData[]): Blob {
 
 // 将发票数据转换为费用明细表行数据
 export function convertToExpenseDetailRows(invoices: InvoiceData[]): ExpenseDetailRow[] {
-  return invoices.filter(inv => inv.isValid).map(invoice => ({
-    date: invoice.invoiceDate || invoice.departureDate || '',
-    projectName: '',  // 留空
-    category: '',     // 留空
-    amount: invoice.amountWithTax || invoice.totalAmount || 0,
-    other: `${invoice.invoiceNumber || ''} ${invoice.invoiceType || ''}`.trim(),
-    subtotal: invoice.amountWithTax || invoice.totalAmount || 0
-  }));
+  // 获取发票类型的中文名称
+  const getInvoiceTypeName = (type?: string): string => {
+    switch (type) {
+      case 'invoice_transport': return '交通';
+      case 'invoice_hotel': return '住宿';
+      case 'invoice_food': return '餐饮';
+      case 'invoice_other': return '其他';
+      case 'train': return '火车票';
+      case 'flight': return '机票';
+      case 'taxi': return '打车';
+      case 'hotel': return '住宿';
+      default: return '';
+    }
+  };
+
+  return invoices.filter(inv => inv.isValid).map(invoice => {
+    const typeName = getInvoiceTypeName(invoice.invoiceType);
+    const invoiceNum = invoice.invoiceNumber || '';
+    const otherInfo = typeName ? `${invoiceNum} [${typeName}]`.trim() : invoiceNum;
+
+    return {
+      date: invoice.invoiceDate || invoice.departureDate || '未识别',
+      projectName: '',  // 留空
+      category: typeName,  // 将类型填入类别列
+      amount: invoice.amountWithTax || invoice.totalAmount || 0,
+      other: otherInfo,
+      subtotal: invoice.amountWithTax || invoice.totalAmount || 0
+    };
+  });
 }
 
 // 生成费用明细表Excel

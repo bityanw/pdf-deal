@@ -1,7 +1,9 @@
 import { useState, useCallback } from 'react';
 import { parseItineraryPDF, convertToExcelRows, generateExcel } from '@/utils/invoiceParser';
+import { matchInvoicesWithItineraries, calculateMatchStatistics } from '@/utils/matchingEngine';
 import type { InvoiceData } from '@/types/pdf';
 import type { PDFFile } from '@/types/pdf';
+import type { MatchResult, MatchStatistics } from '@/types/invoice';
 
 // 解析结果
 interface ParseResult {
@@ -18,7 +20,8 @@ interface Statistics {
   success: number;
   failed: number;
   duplicate: number;
-  invoice: number; // 发票数量（不计入统计）
+  invoice: number; // 发票数量
+  itinerary: number; // 行程单数量
   byType: {
     train: number;
     taxi: number;
@@ -37,6 +40,8 @@ export function useInvoiceToExcel() {
   const [previewData, setPreviewData] = useState<any[][] | null>(null);
   const [statistics, setStatistics] = useState<Statistics | null>(null);
   const [duplicates, setDuplicates] = useState<string[]>([]);
+  const [matchResults, setMatchResults] = useState<MatchResult[]>([]);
+  const [matchStats, setMatchStats] = useState<MatchStatistics | null>(null);
 
   const generateId = () => Math.random().toString(36).substring(2, 9);
   
@@ -64,19 +69,20 @@ export function useInvoiceToExcel() {
   // 计算统计信息
   const calculateStatistics = (invoicesList: InvoiceData[]): Statistics => {
     // 分离发票和行程单
-    const invoiceList = invoicesList.filter(inv => 
+    const invoiceList = invoicesList.filter(inv =>
       inv.invoiceType?.startsWith('invoice_')
     );
-    const nonInvoiceList = invoicesList.filter(inv => 
+    const itineraryList = invoicesList.filter(inv =>
       !inv.invoiceType?.startsWith('invoice_')
     );
-    
+
     const stats: Statistics = {
-      total: invoicesList.length, // 总计包含所有文件
-      success: nonInvoiceList.filter(inv => inv.isValid).length,
-      failed: nonInvoiceList.filter(inv => !inv.isValid).length,
+      total: invoicesList.length,
+      success: invoicesList.filter(inv => inv.isValid).length,
+      failed: invoicesList.filter(inv => !inv.isValid).length,
       duplicate: 0,
-      invoice: invoiceList.length,
+      invoice: invoiceList.filter(inv => inv.isValid).length,
+      itinerary: itineraryList.filter(inv => inv.isValid).length,
       byType: {
         train: 0,
         taxi: 0,
@@ -85,8 +91,8 @@ export function useInvoiceToExcel() {
         other: 0,
       },
     };
-    
-    for (const inv of nonInvoiceList) {
+
+    for (const inv of itineraryList) {
       if (inv.isValid && inv.invoiceType) {
         const type = inv.invoiceType as keyof typeof stats.byType;
         if (type in stats.byType) {
@@ -94,7 +100,7 @@ export function useInvoiceToExcel() {
         }
       }
     }
-    
+
     return stats;
   };
 
@@ -225,29 +231,36 @@ export function useInvoiceToExcel() {
     }
 
     setInvoices(parsedInvoices);
-    
+
     // 检测重复
     const dupList = detectDuplicates(parsedInvoices);
     setDuplicates(dupList);
-    
+
     // 计算统计
     const stats = calculateStatistics(parsedInvoices);
     stats.duplicate = dupList.length;
     setStatistics(stats);
-    
+
+    // 执行比对
+    const matches = matchInvoicesWithItineraries(parsedInvoices);
+    setMatchResults(matches);
+
+    const matchStatistics = calculateMatchStatistics(matches);
+    setMatchStats(matchStatistics);
+
     const validInvoices = parsedInvoices.filter(inv => inv.isValid);
-    
+
     if (validInvoices.length > 0) {
       generateExcelResult(validInvoices, dupList);
     } else {
       setResult({
         success: false,
-        message: errors.join('; ') || '未能成功解析任何行程单',
+        message: errors.join('; ') || '未能成功解析任何文件',
         invoices: parsedInvoices,
       });
       setPreviewData(null);
     }
-    
+
     setIsProcessing(false);
   };
 
@@ -274,20 +287,20 @@ export function useInvoiceToExcel() {
       const excelUrl = URL.createObjectURL(excelBlob);
       
       const invalidCount = invoices.length - validInvoices.length;
-      let message = `成功解析 ${validInvoices.length} 张行程单`;
+      let message = `成功解析 ${validInvoices.length} 个文件`;
       if (invalidCount > 0) {
-        message += `，${invalidCount} 张解析失败`;
+        message += `，${invalidCount} 个解析失败`;
       }
       if (dupList && dupList.length > 0) {
-        message += `，检测到 ${dupList.length} 张重复`;
+        message += `，检测到 ${dupList.length} 个重复`;
       }
-      
+
       setResult({
         success: true,
         message,
         invoices: validInvoices,
         excelUrl,
-        excelFileName: `行程单报销明细_${new Date().toISOString().slice(0, 10)}.xlsx`,
+        excelFileName: `差旅费报销明细_${new Date().toISOString().slice(0, 10)}.xlsx`,
       });
     } catch (error) {
       setResult({
@@ -320,6 +333,8 @@ export function useInvoiceToExcel() {
     setResult(null);
     setPreviewData(null);
     setProgress(0);
+    setMatchResults([]);
+    setMatchStats(null);
   }, []);
 
   // 下载Excel
@@ -343,6 +358,8 @@ export function useInvoiceToExcel() {
     previewData,
     statistics,
     duplicates,
+    matchResults,
+    matchStats,
     addFiles,
     removeFile,
     clearFiles,

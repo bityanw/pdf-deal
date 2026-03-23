@@ -69,3 +69,34 @@ export interface ExpenseDetailRow {
   other: string;          // 其他（发票号+发票类型）
   subtotal: number;       // 小计
 }
+
+// 比对状态
+export type MatchStatus =
+  | 'matched'                      // 完全匹配
+  | 'invoice_missing_itinerary'    // 发票缺少行程单
+  | 'itinerary_missing_invoice'    // 行程单缺少发票
+  | 'amount_mismatch'              // 金额不匹配
+  | 'date_mismatch'                // 日期不匹配
+  | 'unmatched';                   // 未匹配
+
+// 比对结果
+export interface MatchResult {
+  id: string;
+  status: MatchStatus;
+  invoice?: InvoiceData;           // 发票数据
+  itinerary?: InvoiceData;         // 行程单数据
+  reason?: string;                 // 不匹配原因
+  confidence?: number;             // 匹配置信度 0-100
+  dateDiff?: number;               // 日期差异（天数）
+  amountDiff?: number;             // 金额差异
+}
+
+// 比对统计
+export interface MatchStatistics {
+  total: number;                   // 总数
+  matched: number;                 // 完全匹配
+  invoiceMissing: number;          // 发票缺行程单
+  itineraryMissing: number;        // 行程单缺发票
+  amountMismatch: number;          // 金额不匹配
+  dateMismatch: number;            // 日期不匹配
+}
