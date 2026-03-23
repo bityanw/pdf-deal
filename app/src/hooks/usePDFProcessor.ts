@@ -97,13 +97,13 @@ export function usePDFProcessor() {
 
     try {
       const mergedPdf = await PDFDocument.create();
-      
-      // A4 尺寸 (点) - 595.28 x 841.89
-      const a4Width = 595.28;
-      const a4Height = 841.89;
-      
+
+      // A4 尺寸 (点) - 横向：841.89 x 595.28 (宽 x 高)
+      const a4Width = 841.89;   // 横向宽度
+      const a4Height = 595.28;  // 横向高度
+
       // 边距（保留变量定义以便将来使用）
-      
+
       // 收集所有PDF页面
       const allPages: PDFEmbeddedPage[] = [];
       const allOriginalSizes: { width: number; height: number }[] = [];
@@ -146,20 +146,19 @@ export function usePDFProcessor() {
       // 根据合并模式将页面排列到A4纸上
       
       if (options.mergeMode === 'two-per-page') {
-        // 每页2张发票，上下排列
+        // 每页2张发票，左右排列（横版）
         const invoicesPerPage = 2;
-        
-        // 修改为占据页面80%，减小边距和间距
-        const verticalMargin = 50; // 垂直边距减少
-        const horizontalMargin = 30; // 水平边距减少
-        const spacing = 15; // 两张发票之间的间距减少
-        
-        const availableWidth = a4Width - 2 * horizontalMargin;
-        const availableHeight = (a4Height - 2 * verticalMargin - spacing) / 2;
-        
+
+        const verticalMargin = 30;   // 上下边距
+        const horizontalMargin = 40; // 左右边距
+        const spacing = 20;          // 两张发票之间的间距
+
+        const availableWidth = (a4Width - 2 * horizontalMargin - spacing) / 2;
+        const availableHeight = a4Height - 2 * verticalMargin;
+
         for (let i = 0; i < allPages.length; i += invoicesPerPage) {
           const newPage = mergedPdf.addPage([a4Width, a4Height]);
-          
+
           // 为本页的发票计算统一缩放比例（只考虑本页的2张）
           let unifiedScale = Infinity;
           for (let j = 0; j < invoicesPerPage && i + j < allPages.length; j++) {
@@ -170,30 +169,30 @@ export function usePDFProcessor() {
             );
             unifiedScale = Math.min(unifiedScale, scale);
           }
-          
-          // 放置第1张发票（上半部分）
+
+          // 放置第1张发票（左侧）
           if (i < allPages.length) {
             const page1 = allPages[i];
             const scaledWidth1 = page1.width * unifiedScale;
             const scaledHeight1 = page1.height * unifiedScale;
-            
+
             newPage.drawPage(page1, {
-              x: (a4Width - scaledWidth1) / 2,
-              y: a4Height - verticalMargin - scaledHeight1,
+              x: horizontalMargin + (availableWidth - scaledWidth1) / 2,
+              y: (a4Height - scaledHeight1) / 2,
               width: scaledWidth1,
               height: scaledHeight1,
             });
           }
-          
-          // 放置第2张发票（下半部分）
+
+          // 放置第2张发票（右侧）
           if (i + 1 < allPages.length) {
             const page2 = allPages[i + 1];
             const scaledWidth2 = page2.width * unifiedScale;
             const scaledHeight2 = page2.height * unifiedScale;
-            
+
             newPage.drawPage(page2, {
-              x: (a4Width - scaledWidth2) / 2,
-              y: verticalMargin,
+              x: horizontalMargin + availableWidth + spacing + (availableWidth - scaledWidth2) / 2,
+              y: (a4Height - scaledHeight2) / 2,
               width: scaledWidth2,
               height: scaledHeight2,
             });
