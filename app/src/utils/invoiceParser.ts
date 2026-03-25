@@ -724,8 +724,8 @@ function parseTaxiItinerary(text: string, data: InvoiceData): ParseResult {
       }
 
       // 如果没有具体起止点，但有城市信息，使用城市作为地点
-      if (!data.departure && !data.destination && cities.length > 0) {
-        data.destination = cities[0];
+      if (!data.departure && !data.destination && rowCities.length > 0) {
+        data.destination = rowCities[0];
       }
     }
     
