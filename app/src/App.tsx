@@ -4,11 +4,13 @@ import { Footer } from '@/components/Footer';
 import { HeroSection } from '@/sections/HeroSection';
 import { InvoiceMergeTool } from '@/components/InvoiceMergeTool';
 import { PDFToolsGrid } from '@/components/PDFToolsGrid';
+import { LoginPage } from '@/components/LoginPage';
 import type { PDFTool } from '@/types/pdf';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { FileUpload } from '@/components/FileUpload';
 import { usePDFProcessor } from '@/hooks/usePDFProcessor';
+import { useAuth } from '@/hooks/useAuth';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Download, Check, AlertCircle, RotateCcw } from 'lucide-react';
 
@@ -253,6 +255,24 @@ function CompressPDFDialog({ open, onClose }: { open: boolean; onClose: () => vo
 
 function App() {
   const [activeDialog, setActiveDialog] = useState<string | null>(null);
+  const { isAuthenticated, isLoading, login, logout } = useAuth();
+
+  // 显示加载状态
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <RotateCcw className="w-8 h-8 animate-spin text-blue-600 mx-auto mb-2" />
+          <p className="text-gray-600">加载中...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // 未登录显示登录页
+  if (!isAuthenticated) {
+    return <LoginPage onLogin={login} />;
+  }
 
   const handleToolClick = (tool: PDFTool) => {
     if (tool.id === 'pdf-merge') {
@@ -271,7 +291,7 @@ function App() {
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
-      <Navbar currentTool="home" />
+      <Navbar currentTool="home" onLogout={logout} />
       
       <main className="flex-1">
         {/* Hero区域 */}

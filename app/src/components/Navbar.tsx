@@ -1,11 +1,12 @@
 import { useState } from 'react';
-import { Menu, X, FileText, Table, Receipt, Droplets } from 'lucide-react';
+import { Menu, X, FileText, Table, Receipt, Droplets, LogOut } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 
 interface NavbarProps {
   currentTool?: string;
   onToolChange?: (toolId: string) => void;
+  onLogout?: () => void;
 }
 
 const navItems = [
@@ -14,11 +15,17 @@ const navItems = [
   { id: 'watermark', name: 'PDF水印', icon: Droplets, href: 'watermark.html' },
 ];
 
-export function Navbar({ currentTool }: NavbarProps) {
+export function Navbar({ currentTool, onLogout }: NavbarProps) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   const handleNavClick = (href: string) => {
     window.location.href = href;
+  };
+
+  const handleLogout = () => {
+    if (onLogout && confirm('确定要退出登录吗？')) {
+      onLogout();
+    }
   };
 
   return (
@@ -53,6 +60,17 @@ export function Navbar({ currentTool }: NavbarProps) {
                 {item.name}
               </Button>
             ))}
+            {onLogout && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={handleLogout}
+                className="text-red-600 hover:text-red-700 hover:bg-red-50 ml-2"
+              >
+                <LogOut className="w-4 h-4 mr-2" />
+                退出
+              </Button>
+            )}
           </div>
 
           {/* Mobile Menu Button */}
@@ -84,6 +102,19 @@ export function Navbar({ currentTool }: NavbarProps) {
                   {item.name}
                 </Button>
               ))}
+              {onLogout && (
+                <Button
+                  variant="ghost"
+                  className="w-full justify-start text-red-600 hover:text-red-700 hover:bg-red-50"
+                  onClick={() => {
+                    handleLogout();
+                    setMobileMenuOpen(false);
+                  }}
+                >
+                  <LogOut className="w-4 h-4 mr-2" />
+                  退出登录
+                </Button>
+              )}
             </div>
           </div>
         )}
