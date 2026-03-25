@@ -102,11 +102,9 @@ export function usePDFProcessor() {
     try {
       const mergedPdf = await PDFDocument.create();
 
-      // A4 尺寸 (点) - 横向：841.89 x 595.28 (宽 x 高)
-      const a4Width = 841.89;   // 横向宽度
-      const a4Height = 595.28;  // 横向高度
-
-      // 边距（保留变量定义以便将来使用）
+      // A4 尺寸 (点) - 纵向：595.28 x 841.89 (宽 x 高)
+      const a4Width = 595.28;   // 纵向宽度
+      const a4Height = 841.89;  // 纵向高度
 
       // 收集所有PDF页面
       const allPages: PDFEmbeddedPage[] = [];
@@ -165,14 +163,14 @@ export function usePDFProcessor() {
       console.log(`发票文件数: ${providedInvoiceFileCount}, 发票页面数: ${actualInvoicePageCount}, 总页面数: ${allPages.length}`);
 
       if (options.mergeMode === 'two-per-page') {
-        // 每页2张发票，左右排列（横版）
+        // 每页2张发票，上下排列（纵向A4）
 
-        const verticalMargin = 5;    // 上下边距（减小以增大发票尺寸）
-        const horizontalMargin = 5;  // 左右边距（减小以增大发票尺寸）
-        const spacing = 5;           // 两张发票之间的间距（减小以增大发票尺寸）
+        const verticalMargin = 5;    // 上下外边距
+        const horizontalMargin = 5;  // 左右外边距
+        const spacing = 8;           // 两张发票之间的间距
 
-        const availableWidth = (a4Width - 2 * horizontalMargin - spacing) / 2;
-        const availableHeight = a4Height - 2 * verticalMargin;
+        const availableWidth = a4Width - 2 * horizontalMargin;
+        const availableHeight = (a4Height - 2 * verticalMargin - spacing) / 2;
 
         let i = 0;
         while (i < allPages.length) {
@@ -200,55 +198,46 @@ export function usePDFProcessor() {
           // 计算统一缩放比例（基于本页要放置的所有页面）
           let unifiedScale = Infinity;
 
-          // 第1张的缩放
           const size1 = allOriginalSizes[i];
-          const scale1 = Math.min(
-            availableWidth / size1.width,
-            availableHeight / size1.height
-          );
+          const scale1 = Math.min(availableWidth / size1.width, availableHeight / size1.height);
           unifiedScale = Math.min(unifiedScale, scale1);
 
-          // 如果有第2张，也计算它的缩放
           if (canPlaceSecond) {
             const size2 = allOriginalSizes[i + 1];
-            const scale2 = Math.min(
-              availableWidth / size2.width,
-              availableHeight / size2.height
-            );
+            const scale2 = Math.min(availableWidth / size2.width, availableHeight / size2.height);
             unifiedScale = Math.min(unifiedScale, scale2);
           }
 
-          // 放置第1张发票（左侧）
-          if (i < allPages.length) {
-            const page1 = allPages[i];
-            const scaledWidth1 = page1.width * unifiedScale;
-            const scaledHeight1 = page1.height * unifiedScale;
+          // 放置第1张发票（上半部分）
+          // PDF坐标系：y=0在底部，上半区域的底部 y = verticalMargin + availableHeight + spacing
+          const page1 = allPages[i];
+          const scaledWidth1 = page1.width * unifiedScale;
+          const scaledHeight1 = page1.height * unifiedScale;
 
-            newPage.drawPage(page1, {
-              x: horizontalMargin + (availableWidth - scaledWidth1) / 2,
-              y: (a4Height - scaledHeight1) / 2,
-              width: scaledWidth1,
-              height: scaledHeight1,
-            });
-          }
+          newPage.drawPage(page1, {
+            x: horizontalMargin + (availableWidth - scaledWidth1) / 2,
+            y: verticalMargin + availableHeight + spacing + (availableHeight - scaledHeight1) / 2,
+            width: scaledWidth1,
+            height: scaledHeight1,
+          });
 
-          // 放置第2张发票（右侧）
+          // 放置第2张发票（下半部分）
           if (canPlaceSecond) {
             const page2 = allPages[i + 1];
             const scaledWidth2 = page2.width * unifiedScale;
             const scaledHeight2 = page2.height * unifiedScale;
 
             newPage.drawPage(page2, {
-              x: horizontalMargin + availableWidth + spacing + (availableWidth - scaledWidth2) / 2,
-              y: (a4Height - scaledHeight2) / 2,
+              x: horizontalMargin + (availableWidth - scaledWidth2) / 2,
+              y: verticalMargin + (availableHeight - scaledHeight2) / 2,
               width: scaledWidth2,
               height: scaledHeight2,
             });
 
-            console.log(`  放置了2张，索引 ${i} 和 ${i + 1}，统一缩放=${unifiedScale.toFixed(3)}`);
+            console.log(`  放置了2张（上下），索引 ${i} 和 ${i + 1}，统一缩放=${unifiedScale.toFixed(3)}`);
             i += 2;
           } else {
-            console.log(`  只放置了1张，索引 ${i}，缩放=${unifiedScale.toFixed(3)}`);
+            console.log(`  只放置了1张（上半），索引 ${i}，缩放=${unifiedScale.toFixed(3)}`);
             i += 1;
             if (i === totalInvoiceCount && i < allPages.length) {
               console.log(`发票结束，行程单从下一页开始`);

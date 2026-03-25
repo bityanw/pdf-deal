@@ -86,7 +86,7 @@ export function InvoiceToExcelTool() {
   const invalidInvoiceCount = invoices.filter(inv => !inv.isValid).length;
 
   return (
-    <div className="w-full max-w-5xl mx-auto space-y-6">
+    <div className="w-full mx-auto space-y-6 px-2">
       {/* 步骤1：文件上传 */}
       <Card>
         <CardHeader className="pb-4">
@@ -454,15 +454,15 @@ export function InvoiceToExcelTool() {
               Excel预览
             </CardTitle>
           </CardHeader>
-          <CardContent>
-            <div className="overflow-x-auto border rounded-lg">
-              <table className="w-full text-sm">
+          <CardContent className="p-2">
+            <div className="overflow-x-auto border rounded-lg bg-white">
+              <table className="w-full text-xs border-collapse" style={{ minWidth: '100%' }}>
                 <thead className="bg-gray-100">
                   <tr>
                     {previewData[0]?.map((header: string, idx: number) => (
-                      <th 
-                        key={idx} 
-                        className="px-3 py-2 text-left font-medium text-gray-700 border border-gray-300"
+                      <th
+                        key={idx}
+                        className="px-2 py-2 text-left font-medium text-gray-700 border border-gray-300 whitespace-nowrap text-xs"
                         colSpan={idx === 2 || idx === 6 ? 3 : 1}
                       >
                         {header}
@@ -474,10 +474,10 @@ export function InvoiceToExcelTool() {
                   {previewData.slice(1).map((row: any[], rowIdx: number) => (
                     <tr key={rowIdx} className={rowIdx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
                       {row.map((cell: any, cellIdx: number) => (
-                        <td 
-                          key={cellIdx} 
+                        <td
+                          key={cellIdx}
                           className={cn(
-                            "px-3 py-2 border border-gray-200",
+                            "px-2 py-2 border border-gray-200 whitespace-nowrap text-xs",
                             typeof cell === 'number' && cell > 0 ? 'text-right font-medium' : '',
                             rowIdx === previewData.length - 2 && 'bg-yellow-50 font-bold'
                           )}

@@ -273,13 +273,13 @@ export function InvoiceMergeTool() {
               <div className="flex items-center space-x-2">
                 <RadioGroupItem value="two-per-page" id="two-per-page" />
                 <Label htmlFor="two-per-page" className="cursor-pointer">
-                  两张发票在一张A4纸张上
+                  两张发票在一张A4纸上（纵向，上下排列）
                 </Label>
               </div>
               <div className="flex items-center space-x-2">
                 <RadioGroupItem value="four-per-page" id="four-per-page" />
                 <Label htmlFor="four-per-page" className="cursor-pointer">
-                  四张发票在一张A4纸张上
+                  四张发票在一张A4纸上（纵向，2×2排列）
                 </Label>
               </div>
             </RadioGroup>
