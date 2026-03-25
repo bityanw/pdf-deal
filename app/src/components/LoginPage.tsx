@@ -79,8 +79,7 @@ export function LoginPage({ onLogin }: LoginPageProps) {
 
           {/* 提示信息 */}
           <div className="mt-6 text-center text-sm text-gray-500">
-            <p>默认密码：admin123</p>
-            <p className="mt-1">登录后7天内有效</p>
+            <p>登录后7天内有效</p>
           </div>
         </div>
       </div>

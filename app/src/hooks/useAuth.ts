@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 
 const AUTH_KEY = 'pdf_invoice_auth';
-const PASSWORD = 'admin123'; // 可以修改为你想要的密码
+const PASSWORD = 'huijin2026'; // 可以修改为你想要的密码
 
 export function useAuth() {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
